@@ -3,104 +3,105 @@
 import cv2
 import os
 import time
-import threading
-import queue
+import numpy as np
+from threading import Thread
+from QueueE import QueueE
 
-maxbuffer = 10
+"""Lab 3 Threaded Video Player
+   This lab assignment was created with the use of demos provided by the professors. 
+   The lab involves first getting the frames from a video. The frames will be enconded and
+   then stored into a queue. From the first queue we will be dequeing and decoding the frames
+   into a photo and changing the photo from color to gray. The gray photo will be encoded and 
+   stored into a second queue. Finally we will dequeue from the second queue each frame, 
+   decode it to be a photo and display every 42 milliseconds a gray photo/frame into the
+   screen. Important elements of the lab are that 3 threads will be used to concurrently
+   process and trasform the frames. Semaphores will be used to avoid processing more than 
+   10 frames at the time in each queue. 
+"""
 
-def extract(clipFileName, coloredframes):
+clipFileName = "clip.mp4"
+capacity = 10
 
-    # initialize frame count
+readFramesQueue = QueueE(capacity)
+grayFramesQueue = QueueE(capacity)
+
+
+def extractFrames(clipFileName, readFramesQueue):
+    vidcap = cv2.VideoCapture(clipFileName) #Getting the video
     count = 0
-    
-    # open the video clip
-    vidcap = cv2.VideoCapture(clipFileName)
-
-    # read one frame
-    success,image = vidcap.read()
-
+    success,image = vidcap.read()           #Reading first frame
     print(f'Reading frame {count} {success}')
+    while success and count < 700:
+        
+        #Get a jpg encoded frame
+        success, jpgImage = cv2.imencode('.jpg', image)
+        readFramesQueue.enqueue(jpgImage)
+        success,image = vidcap.read()       #Read next frame
+        print(f'Reading frame {count}')
+        count += 1
+    readFramesQueue.enqueue(None)           #Adding a None to the end of the queue
+    print("Video Extraction completed")     #For the stopping point
 
-    while success:
 
-            semaphore.acquire()
-            
-            success, jpgImage = cv2.imencode('.jpg', image)
-
-            # add the frame to queue 1
-            coloredframes.put(image)
-
-            success,image = vidcap.read()
-            print(f'Reading frame {count} {success}')
-            count += 1
-
-            semaphore.release()
-
-    print("Extraction Complete")
-    
-def convert(coloredframes, greyframes):
-
+def convertToGrayScale(readFramesQueue, grayFramesQueue):
     # initialize frame count
     count = 0
-   
-    while coloredframes is not None:
 
-        semaphore.acquire()
+    # get the first jpg encoded frame from the queue
+    inputFrame = readFramesQueue.dequeue()
+
+    while inputFrame is not None and count < 700: 
         print(f'Converting frame {count}')
+
+        #Decode to convert back into an image
+        image = cv2.imdecode(inputFrame, cv2.IMREAD_UNCHANGED)
         
         # convert the image to grayscale
-        grayscaleFrame = cv2.cvtColor(coloredframes.get(), cv2.COLOR_BGR2GRAY)
-        # Get next frame
-        count += 1
-    
-        # grey frames Queue 2 is written to
-        greyframes.put(grayscaleFrame)
-        semaphore.release()
-        
-    print("Conversion Complete")
-    
-def display(greyframes):
+        grayscaleFrame = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
+        #Encode the image again to store into the next queue
+        success, jpgImage = cv2.imencode('.jpg', grayscaleFrame)
+        
+        #change it to enqueue into the grayFramesQueue
+        grayFramesQueue.enqueue(jpgImage)
+        count += 0 
+
+        #Dequeue the next jpg encoded frame
+        inputFrame = readFramesQueue.dequeue()
+        
+    grayFramesQueue.enqueue(None) #Again add None for the stopping point
+    print("Video has been converted to gray")
+    
+def displayFrames(grayFramesQueue):
     # initialize frame count
     count = 0
-
-    while greyframes is not None:
-        semaphore.acquire()
-        # get the next frame
-        frame = greyframes.get()
-
-        print(f'Displaying frame {count}')        
-
-        # display the image in a window called "video" and wait 42ms
-        # before displaying the next frame
-        cv2.imshow('Video', frame)
-        if (cv2.waitKey(42) and 0xFF == ord("q")) or greyframes.empty() is True:
-            break
-        
-        semaphore.release()
     
+    # load the first gray frame
+    frame = grayFramesQueue.dequeue() 
+
+    while frame is not None:
+        print(f'Displaying frame {count}')
+
+        # Decode back the frame into an image
+        image = cv2.imdecode(frame, cv2.IMREAD_UNCHANGED)
+        
+        # Display the frame/image in a window called "Video"
+        cv2.imshow('Video', image)
+
+        # Wait for 42 ms and check if the user wants to quit
+        if cv2.waitKey(42) and 0xFF == ord("q"):
+            break
+
         count += 1
+
+        # Read the next jpg encoded frame
+        frame = grayFramesQueue.dequeue()
 
     # make sure we cleanup the windows, otherwise we might end up with a mess
     cv2.destroyAllWindows()
-        
-    print("Display Complete")
-
-# Bounded Semaphore ensures that there is a limit on the amount of stuff placed inside the queue
-# and that an empty queue is never read from   
-semaphore = threading.BoundedSemaphore(3)
-fileName = 'clip.mp4'
 
 
-coloredframes = queue.Queue()
-greyframes = queue.Queue()
-
-
-# start threads
-thread1 = threading.Thread(target = extract, args = (fileName, coloredframes))
-thread2 = threading.Thread(target = convert, args = (coloredframes, greyframes))
-thread3 = threading.Thread(target = display, args = (greyframes,))
-
-thread1.start()
-thread2.start()
-thread3.start()
+#Creation and start of the 3 threads which will handle the methods
+extractThread = Thread(target = extractFrames, args = (clipFileName, readFramesQueue)).start()
+greyFramesThread = Thread(target = convertToGrayScale, args = (readFramesQueue, grayFramesQueue)).start()
+displayThread = Thread(target = displayFrames, args = (grayFramesQueue,)).start()
