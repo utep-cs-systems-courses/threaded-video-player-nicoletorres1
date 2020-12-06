@@ -7,15 +7,13 @@ import numpy as np
 from threading import Thread
 from QueueE import QueueE
 
-"""Lab 3 Threaded Video Player
-   This lab assignment was created with the use of demos provided by the professors. 
-   The lab involves first getting the frames from a video. The frames will be enconded and
+"""
+   First this lab will be getting the frames from a video clip provided. The frames will be enconded and
    then stored into a queue. From the first queue we will be dequeing and decoding the frames
    into a photo and changing the photo from color to gray. The gray photo will be encoded and 
    stored into a second queue. Finally we will dequeue from the second queue each frame, 
    decode it to be a photo and display every 42 milliseconds a gray photo/frame into the
-   screen. Important elements of the lab are that 3 threads will be used to concurrently
-   process and trasform the frames. Semaphores will be used to avoid processing more than 
+   screen. Semaphores will be used to avoid processing more than 
    10 frames at the time in each queue. 
 """
 
